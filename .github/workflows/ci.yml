@@ -1,0 +1,122 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra ml --extra safety --extra assistant
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Download ML datasets (UCI diabetes, no-show mirror)
+        run: uv run python ml/data/download.py
+
+      - name: Start Postgres + HAPI FHIR
+        run: docker compose up -d postgres hapi-fhir
+
+      - name: Wait for HAPI FHIR
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8210/fhir/metadata > /dev/null; then
+              echo "HAPI FHIR is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "HAPI FHIR did not become ready in time" >&2
+          exit 1
+
+      - name: Bootstrap schema
+        run: uv run python scripts/bootstrap_db.py
+        env:
+          CAREFLOW_DB_DSN: postgresql://careflow:careflow@localhost:5544/careflow
+
+      - name: Train models (needed by live-scoring and API tests)
+        run: |
+          uv run python -m ml.readmission.train
+          uv run python -m ml.los.train
+          uv run python -m ml.noshow.train
+
+      - name: Ingest RAG policy corpus (needed by coverage_rag tests)
+        run: uv run python -m rag.store
+
+      - name: Run tests
+        run: uv run pytest -v
+        env:
+          CAREFLOW_DB_DSN: postgresql://careflow:careflow@localhost:5544/careflow
+          CAREFLOW_FHIR_BASE_URL: http://localhost:8210/fhir
+        # QA judge / gateway tests that need a real LLM key skip gracefully
+        # (pytest.mark.skipif) when ANTHROPIC_API_KEY/OPENAI_API_KEY/
+        # OLLAMA_API_KEY aren't set as repo secrets -- intentionally not
+        # required for CI to stay free to run on every push.
+        # tests/e2e/ (Playwright, SPEC 11) self-skips here (see
+        # tests/e2e/conftest.py's collect_ignore_glob): the `e2e` extra and
+        # both Next.js servers aren't up yet at this point in the job --
+        # they're started below instead, right before the e2e run.
+        # This step includes tests/contract/test_conversations_eval.py
+        # (SPEC 11's 120-scenario conversation eval) and
+        # tests/contract/test_worklist_performance.py (SPEC 9's "worklist
+        # loads under 2s with 2,000 patients" criterion, which seeds 2,000
+        # RiskAssessments first) -- both marked `slow`. No `-m` filter here
+        # on purpose, so CI genuinely gates on these per SPEC ("all
+        # evaluation sets gating CI"); together they're the slowest part of
+        # this job. For a faster local loop, run `uv run pytest -m "not slow"`.
+
+      - name: Build care-web and patient-web (type-check + production build)
+        run: |
+          cd apps/care-web && npm ci && npm run build
+          cd ../patient-web && npm ci && npm run build
+
+      - name: Start FastAPI backend + both Next.js apps
+        run: |
+          uv run uvicorn apps.api.main:app --port 8000 &
+          (cd apps/care-web && npm run start) &
+          (cd apps/patient-web && npm run start) &
+        env:
+          CAREFLOW_DB_DSN: postgresql://careflow:careflow@localhost:5544/careflow
+          CAREFLOW_FHIR_BASE_URL: http://localhost:8210/fhir
+
+      - name: Wait for backend + both apps
+        run: |
+          for url in http://localhost:8000/health http://localhost:3010/worklist http://localhost:3011/; do
+            for i in $(seq 1 60); do
+              if curl -sf "$url" > /dev/null; then
+                echo "$url is up."
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "$url did not become ready in time" >&2
+                exit 1
+              fi
+              sleep 2
+            done
+          done
+
+      - name: Install Playwright (e2e extra + chromium)
+        run: |
+          uv sync --extra ml --extra safety --extra assistant --extra e2e
+          uv run playwright install --with-deps chromium
+
+      - name: Run Playwright E2E suite (SPEC 11 acceptance criteria)
+        run: uv run pytest tests/e2e -v
+        env:
+          CAREFLOW_DB_DSN: postgresql://careflow:careflow@localhost:5544/careflow
+          CAREFLOW_FHIR_BASE_URL: http://localhost:8210/fhir
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

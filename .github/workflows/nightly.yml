@@ -1,0 +1,81 @@
+name: nightly
+
+# SPEC section 11: "Nightly: live LLM run of all conversation and safety
+# sets; results in ops.eval_runs and the Quality dashboard." This repo's
+# core flows (booking/cancel/intake/coverage/handover, the red-flag and
+# scope guards) are deliberately rule-based, not LLM-based (see PROGRESS.md
+# for why) -- deterministic logic doesn't "drift" overnight the way a model
+# behind an API can, so there's limited value re-running it nightly purely
+# to catch drift. What's run here instead, each night: the full eval suite
+# (safety, scope, prompt-injection, conversations) as a standing regression
+# check, plus the one genuinely LLM-dependent, model-version-exposed eval --
+# QA judge calibration -- which is exactly the part that *can* drift if the
+# underlying model changes. All of it recorded to ops.eval_runs either way.
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC daily
+  workflow_dispatch: {} # manual trigger from the Actions tab
+
+jobs:
+  nightly-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra ml --extra safety --extra assistant
+
+      - name: Download ML datasets
+        run: uv run python ml/data/download.py
+
+      - name: Start Postgres + HAPI FHIR
+        run: docker compose up -d postgres hapi-fhir
+
+      - name: Wait for HAPI FHIR
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8210/fhir/metadata > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "HAPI FHIR did not become ready in time" >&2
+          exit 1
+
+      - name: Bootstrap schema + seed data (eval sets need real patients/slots)
+        run: |
+          uv run python scripts/bootstrap_db.py
+          uv run python fhir/seed/load.py --count 50
+        env:
+          CAREFLOW_DB_DSN: postgresql://careflow:careflow@localhost:5544/careflow
+
+      - name: Train models + ingest RAG corpus
+        run: |
+          uv run python -m ml.readmission.train
+          uv run python -m ml.los.train
+          uv run python -m ml.noshow.train
+          uv run python -m rag.store
+
+      - name: Run all eval sets and record to ops.eval_runs
+        run: uv run python -m evals.run_all_and_record
+        env:
+          CAREFLOW_DB_DSN: postgresql://careflow:careflow@localhost:5544/careflow
+          CAREFLOW_FHIR_BASE_URL: http://localhost:8210/fhir
+          # QA judge calibration needs a real LLM key as a repo secret to run
+          # for real; skips gracefully (prints why, doesn't fail the job) if
+          # none of these are set, same as every other LLM-dependent test.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          CAREFLOW_LLM_MODEL: ${{ secrets.CAREFLOW_LLM_MODEL }}
+          CAREFLOW_LLM_API_BASE: ${{ secrets.CAREFLOW_LLM_API_BASE }}
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
