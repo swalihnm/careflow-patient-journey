@@ -1,0 +1,303 @@
+# CareFlow red-flag protocol.
+#
+# Drawn from public patient-safety guidance (NHS 111/999 "when to seek emergency
+# care" categories, American Stroke Association FAST signs, WHO suicide
+# prevention guidance on safe messaging and recognising risk language). This is
+# a portfolio demonstration, not a clinically validated instrument -- SPEC's own
+# "most important habit" note asks for human review of every message here and
+# in evals/safety/messages.yaml before treating this as production-grade.
+#
+# An LLM-assisted linguistic pass (2026-10-05) read every Arabic label and
+# keyword in this file plus every Arabic/Arabizi message in
+# evals/safety/messages.yaml and evals/scope/messages.yaml, and fixed a
+# handful of concrete errors it found: a mistranslation ("blistering"
+# rendered as merely "swollen"), a missing hamza, and two grammar errors
+# (gender agreement; wrong case marking). All fixes were re-verified against
+# the full eval suite afterward (100% recall/catch rate held).
+#
+# This is NOT a substitute for the native-speaker/clinician review SPEC asks
+# for -- it can catch concrete grammar/translation errors but can't judge
+# dialectal naturalness, clinical terminology precision, or cultural
+# appropriateness the way a human reviewer could. No native Arabic speaker
+# or clinician has reviewed this file. Treat category coverage and phrasing
+# as a stronger first draft than before, not a finished clinical artifact.
+#
+# Design principle (SPEC 8.1): false alarms are acceptable, missed red flags
+# are not. Keyword lists lean toward recall.
+#
+# UAE emergency numbers (SPEC section 7): ambulance 998, police 999 --
+# verified 2026-10-05 against the UAE government portal (u.ae, "Handling
+# emergencies") and corroborating sources. Re-check before any real
+# deployment regardless, since official numbers can change after this date.
+
+version: 1
+
+emergency_numbers:
+  ambulance: "998"
+  police: "999"
+
+categories:
+  chest_pain:
+    label_en: "Chest pain or pressure"
+    label_ar: "ألم أو ضغط في الصدر"
+    escalation: emergency
+    keywords_en:
+      - "chest pain"
+      - "chest pressure"
+      - "chest tightness"
+      - "tightness in my chest"
+      - "pain in my chest"
+      - "chest hurts"
+      - "crushing pain in my chest"
+      - "chest feels tight"
+      - "squeezing in my chest"
+      - "heart attack"
+      - "pressure in my chest"
+      - "crushing weight on my chest"
+      - "sitting on my chest"
+      - "sitting on it and i'm sweating"
+    keywords_ar:
+      - "ألم في الصدر"
+      - "ألم صدر"
+      - "ضغط في الصدر"
+      - "صدري يؤلمني"
+      - "ضيق في الصدر"
+      - "أزمة قلبية"
+      - "إحساس بضغط على صدري"
+      - "ضغط شديد في صدري"
+      - "ألم شديد في الصدر"
+      - "يجلس على صدري"
+    keywords_dialect_arabizi:
+      - "sadri yo2lemni"
+      - "3andi alam fi sadri"
+      - "chest hurts w feeh 7'ozg"
+      - "fi 3'ala 3ala sadri"
+      - "crushing weight on my chest"
+
+  difficulty_breathing:
+    label_en: "Difficulty breathing"
+    label_ar: "صعوبة في التنفس"
+    escalation: emergency
+    keywords_en:
+      - "can't breathe"
+      - "cannot breathe"
+      - "hard to breathe"
+      - "difficulty breathing"
+      - "short of breath"
+      - "shortness of breath"
+      - "gasping for air"
+      - "struggling to breathe"
+      - "out of breath and it won't stop"
+      - "can't catch my breath"
+      - "wheezing badly"
+      - "lips look a bit blue"
+      - "lips turning blue"
+    keywords_ar:
+      - "لا أستطيع التنفس"
+      - "صعوبة في التنفس"
+      - "ضيق في التنفس"
+      - "اختناق"
+      - "أشعر بالاختناق"
+      - "ضيق شديد في التنفس"
+    keywords_dialect_arabizi:
+      - "ma agdar atnafas"
+      - "3andi da2eeq nafas"
+      - "sa3ba atnafas"
+
+  stroke_signs:
+    label_en: "Possible stroke signs (face drooping, arm weakness, speech difficulty)"
+    label_ar: "علامات جلطة دماغية محتملة"
+    escalation: emergency
+    keywords_en:
+      - "face is drooping"
+      - "one side of my face"
+      - "can't move my arm"
+      - "arm feels weak"
+      - "slurred speech"
+      - "can't speak properly"
+      - "sudden confusion"
+      - "sudden numbness on one side"
+      - "vision suddenly blurred in one eye"
+      - "speech suddenly became slurred"
+      - "can't feel one whole side"
+      - "can't feel one side of my body"
+    keywords_ar:
+      - "وجهي مائل"
+      - "جانب واحد من وجهي"
+      - "لا أستطيع تحريك ذراعي"
+      - "كلامي غير واضح"
+      - "تنميل مفاجئ في جانب واحد"
+      - "خدر مفاجئ"
+      - "ذراعي أصبحت ضعيفة"
+      - "لا أستطيع الشعور بجانب"
+    keywords_dialect_arabizi:
+      - "wejhi meel min jiha wa7da"
+      - "edi el yesar ma agdar a7arikha"
+      - "kalami mo wade7 fj2a"
+
+  suicidal_ideation:
+    label_en: "Suicidal thoughts or self-harm"
+    label_ar: "أفكار انتحارية أو إيذاء النفس"
+    escalation: crisis
+    keywords_en:
+      - "want to kill myself"
+      - "want to end my life"
+      - "thinking about suicide"
+      - "suicidal"
+      - "don't want to live anymore"
+      - "planning to hurt myself"
+      - "self harm"
+      - "better off dead"
+      - "no reason to keep living"
+      - "end it all"
+    keywords_ar:
+      - "أريد أن أنهي حياتي"
+      - "أفكر في الانتحار"
+      - "لا أريد أن أعيش"
+      - "أريد أن أؤذي نفسي"
+      - "أفضل أن أموت"
+      - "لا أرى فائدة من الاستمرار في الحياة"
+    keywords_dialect_arabizi:
+      - "abi anha7i 7ayati"
+      - "mo 3ayez a3eesh"
+      - "abi a2thi nafsi"
+      - "afkar ente7ariya"
+
+  severe_bleeding:
+    label_en: "Severe or uncontrolled bleeding"
+    label_ar: "نزيف شديد لا يتوقف"
+    escalation: emergency
+    keywords_en:
+      - "bleeding heavily"
+      - "won't stop bleeding"
+      - "severe bleeding"
+      - "blood everywhere"
+      - "bleeding a lot and can't stop it"
+      - "deep cut that won't stop bleeding"
+      - "bleeding a lot and won't stop"
+      - "bleeding is not stopping"
+      - "is not stopping and it's been"
+    keywords_ar:
+      - "نزيف شديد"
+      - "نزيف لا يتوقف"
+      - "ينزف بشدة"
+      - "دم كثير ولا يتوقف"
+    keywords_dialect_arabizi:
+      - "fi nazeef shadeed"
+      - "el dam ma yewgaf"
+
+  anaphylaxis:
+    label_en: "Severe allergic reaction / anaphylaxis"
+    label_ar: "رد فعل تحسسي شديد"
+    escalation: emergency
+    keywords_en:
+      - "throat is closing"
+      - "swelling in my throat"
+      - "can't swallow and my face is swelling"
+      - "severe allergic reaction"
+      - "anaphylaxis"
+      - "hives all over and trouble breathing"
+      - "lips are swelling and I feel dizzy"
+      - "lips are swelling"
+    keywords_ar:
+      - "حلقي ينغلق"
+      - "تورم في حلقي"
+      - "رد فعل تحسسي شديد"
+      - "تورم في وجهي وصعوبة في التنفس"
+      - "شفتاي تتورمان"
+    keywords_dialect_arabizi:
+      - "7algi yeghle2"
+      - "wejhi metwarem w ma agdar atnafas"
+
+  loss_of_consciousness:
+    label_en: "Fainting or loss of consciousness"
+    label_ar: "فقدان الوعي أو الإغماء"
+    escalation: emergency
+    keywords_en:
+      - "passed out"
+      - "lost consciousness"
+      - "fainted"
+      - "blacked out"
+      - "he is not responding"
+      - "she won't wake up"
+      - "not waking up"
+    keywords_ar:
+      - "فقدت الوعي"
+      - "أغمي علي"
+      - "لا يستجيب"
+      - "لا تستيقظ"
+    keywords_dialect_arabizi:
+      - "eghma 3alay"
+      - "ma yerodd 3alay w ma yesta9the"
+
+  severe_abdominal_pain:
+    label_en: "Severe abdominal pain"
+    label_ar: "ألم شديد في البطن"
+    escalation: emergency
+    keywords_en:
+      - "severe stomach pain"
+      - "worst abdominal pain of my life"
+      - "excruciating stomach pain"
+      - "stomach pain so bad I can't stand up"
+      - "unbearable pain in my abdomen"
+      - "worst abdominal pain i've ever felt"
+    keywords_ar:
+      - "ألم شديد في البطن"
+      - "أسوأ ألم في بطني"
+      - "ألم لا يحتمل في المعدة"
+      - "ألم شديد جدا في البطن"
+    keywords_dialect_arabizi:
+      - "alam shadeed fi batni ma agdar ag3od"
+
+  infant_high_fever:
+    label_en: "High fever in an infant, or a fever with a rash/stiff neck"
+    label_ar: "حمى شديدة عند رضيع"
+    escalation: emergency
+    keywords_en:
+      - "baby has a fever over 39"
+      - "infant fever and won't stop crying"
+      - "newborn is very hot and floppy"
+      - "baby fever and stiff neck"
+      - "baby fever and rash that doesn't fade"
+      - "temperature is over 39"
+      - "very floppy"
+    keywords_ar:
+      - "طفلي الرضيع درجة حرارته مرتفعة جدا"
+      - "حرارة الطفل عالية ورقبته متيبسة"
+      - "طفلي عنده حمى وطفح جلدي"
+    keywords_dialect_arabizi:
+      - "wildi 7ararto 3alya jiddan w ma yebki"
+
+  seizure:
+    label_en: "Seizure / convulsions"
+    label_ar: "نوبة تشنج"
+    escalation: emergency
+    keywords_en:
+      - "having a seizure"
+      - "is having convulsions"
+      - "shaking uncontrollably and unresponsive"
+      - "fitting and won't stop"
+    keywords_ar:
+      - "نوبة تشنج"
+      - "يتشنج ولا يستجيب"
+      - "يرتجف بشدة ولا يستجيب"
+    keywords_dialect_arabizi:
+      - "3ando tashannuj w ma yerod"
+
+  severe_burns:
+    label_en: "Severe burns"
+    label_ar: "حروق شديدة"
+    escalation: emergency
+    keywords_en:
+      - "severe burn"
+      - "large area burned"
+      - "burned badly and skin is blistering everywhere"
+      - "got burned badly"
+      - "skin is blistering"
+    keywords_ar:
+      - "حرق شديد"
+      - "احتراق كبير في الجلد"
+      - "احترقت بشدة"
+      - "الجلد مليء بالفقاقيع"
+    keywords_dialect_arabizi:
+      - "7ar2 shadeed w jildi metwarem"
