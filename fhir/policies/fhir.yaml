@@ -1,0 +1,79 @@
+# specmcp policy: which operations from fhir/openapi/fhir.yaml become callable tools,
+# for which roles, and what fields get masked in the response per role.
+#
+# An operationId with no entry here is never exposed as a tool, for anyone.
+# An operationId present here but missing a role from allowed_roles is exposed
+# (it exists), but calling it as that role is a policy denial — audited via trustcore.
+version: 1
+
+roles:
+  assistant:
+    description: >
+      Patient-facing chat session. Cannot read Condition or MedicationRequest under
+      any circumstance — a tool that cannot read clinical data cannot leak it.
+  care_team:
+    description: Clinicians and nurses (dashboard, Phase 4+).
+  auditor:
+    description: Read-only compliance/audit role. Sees masked identifiers, never risk scores.
+
+operations:
+  search_slots:
+    resource: Slot
+    allowed_roles: [assistant, care_team]
+
+  book_appointment:
+    resource: Appointment
+    allowed_roles: [assistant, care_team]
+
+  cancel_appointment:
+    resource: Appointment
+    allowed_roles: [assistant, care_team]
+
+  search_appointments:
+    resource: Appointment
+    allowed_roles: [assistant, care_team]
+
+  read_slot:
+    resource: Slot
+    allowed_roles: [assistant, care_team]
+
+  update_slot:
+    resource: Slot
+    allowed_roles: [assistant, care_team]
+
+  read_patient_demographics:
+    resource: Patient
+    allowed_roles: [assistant, care_team, auditor]
+    mask:
+      assistant:
+        hide_fields: [identifier]
+      auditor:
+        hide_fields: [name, telecom, identifier]
+
+  read_coverage:
+    resource: Coverage
+    allowed_roles: [assistant, care_team]
+
+  write_questionnaire_response:
+    resource: QuestionnaireResponse
+    allowed_roles: [assistant, care_team]
+
+  write_communication:
+    resource: Communication
+    allowed_roles: [assistant, care_team]
+
+  # Listed so the policy engine can give a specific "role not permitted" denial
+  # (rather than "unknown tool") when the assistant role attempts clinical reads.
+  read_condition:
+    resource: Condition
+    allowed_roles: [care_team]
+    mask:
+      auditor:
+        hide_fields: [code, note]
+
+  read_medication_request:
+    resource: MedicationRequest
+    allowed_roles: [care_team]
+    mask:
+      auditor:
+        hide_fields: [medicationCodeableConcept, note]

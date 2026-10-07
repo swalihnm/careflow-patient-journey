@@ -1,0 +1,205 @@
+# Curated FHIR R4 OpenAPI subset for CareFlow.
+#
+# Hand-curated (not a raw export of HAPI's CapabilityStatement): this lists only the
+# operations CareFlow intends to expose as tools, with descriptions written for an LLM
+# tool-caller rather than for FHIR spec compliance. specmcp cross-references operationId
+# here against fhir/policies/fhir.yaml to decide what actually becomes a callable tool —
+# an operation listed here with no policy entry is never exposed.
+openapi: 3.0.3
+info:
+  title: CareFlow FHIR subset
+  version: "1.0"
+  description: >
+    The subset of the HAPI FHIR R4 server's REST API that CareFlow's specmcp layer
+    is allowed to turn into tools. Everything else on the FHIR server (Condition,
+    MedicationRequest, Observation writes, etc.) is deliberately absent from this
+    file for the assistant's purposes, or present-but-restricted via policy.
+servers:
+  - url: /fhir
+paths:
+  /Slot:
+    get:
+      operationId: search_slots
+      summary: Search open appointment slots
+      description: >
+        Search bookable appointment slots by schedule, practitioner and time window.
+        Use this before offering the patient appointment times.
+      parameters:
+        - name: schedule
+          in: query
+          schema: { type: string }
+          description: Schedule reference to search within (e.g. "Schedule/123").
+        - name: start
+          in: query
+          schema: { type: string }
+          description: FHIR date search param, e.g. "ge2026-10-01".
+        - name: status
+          in: query
+          schema: { type: string }
+          description: Slot status, usually "free".
+        - name: _count
+          in: query
+          schema: { type: integer }
+
+  /Slot/{id}:
+    get:
+      operationId: read_slot
+      summary: Read one slot by id
+      description: >
+        Fetch a Slot's full resource, e.g. before updating its status --
+        FHIR's PUT replaces the whole resource, so a status change needs the
+        complete original first.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+    put:
+      operationId: update_slot
+      summary: Mark a slot busy or free
+      description: >
+        Update a Slot's status, e.g. to "busy" right after booking it so it's
+        no longer offered to the next patient, or back to "free" after a
+        cancellation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/fhir+json:
+            schema: { type: object }
+
+  /Appointment:
+    post:
+      operationId: book_appointment
+      summary: Book an appointment
+      description: >
+        Create an Appointment. Only call this after the patient has explicitly
+        confirmed the specific slot, clinic and practitioner.
+      requestBody:
+        required: true
+        content:
+          application/fhir+json:
+            schema: { type: object }
+    get:
+      operationId: search_appointments
+      summary: Search a patient's own appointments
+      description: >
+        Search Appointments by patient and status, e.g. to find which upcoming
+        appointment a patient means when they ask to cancel or reschedule.
+      parameters:
+        - name: patient
+          in: query
+          required: true
+          schema: { type: string }
+          description: Patient reference, e.g. "Patient/123".
+        - name: status
+          in: query
+          schema: { type: string }
+          description: Appointment status, e.g. "booked".
+        - name: _count
+          in: query
+          schema: { type: integer }
+          description: >
+            Max results per page (HAPI defaults to 20, which can silently
+            hide older appointments for a patient with many on record).
+
+  /Appointment/{id}:
+    put:
+      operationId: cancel_appointment
+      summary: Cancel or reschedule an appointment
+      description: >
+        Update an existing Appointment, typically to set status=cancelled or to
+        change its start/end time for a reschedule.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/fhir+json:
+            schema: { type: object }
+
+  /Patient/{id}:
+    get:
+      operationId: read_patient_demographics
+      summary: Read patient demographics
+      description: >
+        Read a patient's demographic record (name, contact, language). Does not
+        return clinical data — Patient has no diagnosis or medication fields.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+
+  /Coverage:
+    get:
+      operationId: read_coverage
+      summary: Read a patient's insurance coverage
+      description: >
+        Search Coverage resources by beneficiary (patient), to answer insurance
+        coverage questions.
+      parameters:
+        - name: beneficiary
+          in: query
+          required: true
+          schema: { type: string }
+          description: Patient reference, e.g. "Patient/123".
+
+  /QuestionnaireResponse:
+    post:
+      operationId: write_questionnaire_response
+      summary: Save structured pre-visit intake answers
+      description: >
+        Store the patient's own answers to the fixed pre-visit intake questionnaire.
+        This is a neutral record of what the patient said, not a diagnosis.
+      requestBody:
+        required: true
+        content:
+          application/fhir+json:
+            schema: { type: object }
+
+  /Communication:
+    post:
+      operationId: write_communication
+      summary: Send a clinical-team notification
+      description: >
+        Create a Communication resource, used to alert a nurse (e.g. on a
+        red-flag escalation) or notify the care team.
+      requestBody:
+        required: true
+        content:
+          application/fhir+json:
+            schema: { type: object }
+
+  /Condition:
+    get:
+      operationId: read_condition
+      summary: Search a patient's conditions
+      description: >
+        Search Condition resources by patient. Clinical data — not exposed to
+        the patient-facing assistant role; care-team/dashboard use only.
+      parameters:
+        - name: patient
+          in: query
+          required: true
+          schema: { type: string }
+
+  /MedicationRequest:
+    get:
+      operationId: read_medication_request
+      summary: Search a patient's medication requests
+      description: >
+        Search MedicationRequest resources by patient. Clinical data — not
+        exposed to the patient-facing assistant role; care-team/dashboard use only.
+      parameters:
+        - name: patient
+          in: query
+          required: true
+          schema: { type: string }
