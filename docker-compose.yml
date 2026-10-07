@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: careflow
+      POSTGRES_PASSWORD: careflow
+      POSTGRES_DB: careflow
+    ports:
+      - "5544:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U careflow -d careflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  hapi-fhir:
+    image: hapiproject/hapi:v8.12.0-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/hapi
+      SPRING_DATASOURCE_USERNAME: careflow
+      SPRING_DATASOURCE_PASSWORD: careflow
+      SPRING_DATASOURCE_DRIVERCLASSNAME: org.postgresql.Driver
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
+      HAPI_FHIR_FHIR_VERSION: R4
+      HAPI_FHIR_ALLOW_MULTIPLE_DELETE: "true"
+      # Default JVM heap OOM'd partway through seeding ~7,300 resources for
+      # 300 patients (java.lang.OutOfMemoryError: Java heap space in the
+      # container logs, after which even trivial queries hung) -- JAVA_TOOL_OPTIONS
+      # is picked up by any `java` invocation regardless of this image's own
+      # entrypoint wiring.
+      JAVA_TOOL_OPTIONS: "-Xmx2g"
+    ports:
+      - "8210:8080"
+    # No built-in healthcheck: this image has no shell/curl/wget available to probe
+    # with. `make up` / the seed scripts poll GET /fhir/metadata from the host instead.
+
+  hie:
+    build:
+      context: .
+      dockerfile: hie/Dockerfile
+    depends_on:
+      - hapi-fhir
+      - postgres
+    environment:
+      CAREFLOW_DB_DSN: postgresql://careflow:careflow@postgres:5432/careflow
+      CAREFLOW_FHIR_BASE_URL: http://hapi-fhir:8080/fhir
+    ports:
+      - "8211:8000"
+
+volumes:
+  pgdata:
